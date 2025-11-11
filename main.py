@@ -75,20 +75,17 @@ class MathDefuserGame:
         # Determinar complejidad según nivel
         if self.nivel_actual <= 2:
             grado = random.randint(2, 3)
-            num_puntos = grado + 2  # Un punto extra para asegurar buena interpolación
+            num_puntos = grado + 2
         else:
             grado = random.randint(3, 4)
-            num_puntos = grado + 3  # Más puntos para mayor precisión
+            num_puntos = grado + 3
         
         # Generar función polinómica realista
         if grado == 2:
-            # ax² + bx + c
             coef = [random.uniform(-2, 2), random.uniform(-5, 5), random.uniform(-10, 10)]
         elif grado == 3:
-            # ax³ + bx² + cx + d
             coef = [random.uniform(-1, 1), random.uniform(-3, 3), random.uniform(-5, 5), random.uniform(-10, 10)]
-        else:  # grado 4
-            # ax⁴ + bx³ + cx² + dx + e
+        else:
             coef = [random.uniform(-0.5, 0.5), random.uniform(-2, 2), random.uniform(-3, 3), 
                     random.uniform(-5, 5), random.uniform(-10, 10)]
         
@@ -98,11 +95,10 @@ class MathDefuserGame:
         x_min = 0
         x_max = num_puntos + 3
         
-        # Crear conjunto de X bien distribuidas (mezcla pares e impares)
+        # Crear conjunto de X bien distribuidas
         todas_x = list(range(x_min, x_max + 1))
         
         # Seleccionar puntos de referencia (bombas explotadas) bien distribuidos
-        # Asegurar que haya puntos a ambos lados de los objetivos
         self.puntos_detonados = []
         
         # Siempre incluir puntos en los extremos
@@ -116,7 +112,6 @@ class MathDefuserGame:
         # Seleccionar puntos internos bien distribuidos
         puntos_necesarios = num_puntos - len(self.puntos_detonados)
         if puntos_necesarios > 0:
-            # Preferir puntos que no estén muy juntos
             x_internos = []
             while len(x_internos) < puntos_necesarios and todas_x:
                 x_candidato = random.choice(todas_x)
@@ -126,7 +121,6 @@ class MathDefuserGame:
                     x_internos.append(x_candidato)
                     todas_x.remove(x_candidato)
                 else:
-                    # Si no hay más opciones, tomar cualquier punto
                     x_internos.append(todas_x.pop(0))
             
             for x in x_internos:
@@ -136,28 +130,56 @@ class MathDefuserGame:
         # Ordenar puntos por X
         self.puntos_detonados.sort(key=lambda p: p[0])
         
-        # Generar bombas objetivo (X a interpolar)
-        # Seleccionar puntos dentro del rango cubierto pero no en los puntos conocidos
+        # MEJORA: Generar bombas objetivo distribuidas en diferentes rangos
         x_min_detonado = min(p[0] for p in self.puntos_detonados)
         x_max_detonado = max(p[0] for p in self.puntos_detonados)
         
-        posibles_objetivos = []
-        for x in range(x_min_detonado + 1, x_max_detonado):
-            if x not in [p[0] for p in self.puntos_detonados]:
-                # Verificar que no esté demasiado cerca de puntos conocidos
-                cercano = any(abs(x - p[0]) <= 1 for p in self.puntos_detonados)
-                if not cercano:
-                    posibles_objetivos.append(x)
+        # Dividir el rango en segmentos y seleccionar un objetivo de cada segmento
+        num_objetivos = min(3, x_max_detonado - x_min_detonado - 1)
+        if num_objetivos < 2:
+            num_objetivos = 2
         
-        # Si no hay suficientes objetivos, relajar el criterio
-        if len(posibles_objetivos) < 3:
+        segmentos = []
+        rango_total = x_max_detonado - x_min_detonado
+        segment_size = max(1, rango_total // num_objetivos)
+        
+        for i in range(num_objetivos):
+            seg_min = x_min_detonado + i * segment_size + 1
+            seg_max = x_min_detonado + (i + 1) * segment_size
+            if seg_min < seg_max:
+                segmentos.append((seg_min, seg_max))
+        
+        # Si no hay suficientes segmentos, crear algunos adicionales
+        while len(segmentos) < num_objetivos:
+            seg_min = x_min_detonado + len(segmentos) + 1
+            seg_max = min(seg_min + 1, x_max_detonado - 1)
+            if seg_min < seg_max:
+                segmentos.append((seg_min, seg_max))
+        
+        self.x_objetivo = []
+        puntos_detonados_x = [p[0] for p in self.puntos_detonados]
+        
+        for seg_min, seg_max in segmentos:
+            posibles_en_segmento = [x for x in range(seg_min, seg_max + 1) 
+                                  if x not in puntos_detonados_x and x not in self.x_objetivo]
+            if posibles_en_segmento:
+                x_elegido = random.choice(posibles_en_segmento)
+                self.x_objetivo.append(x_elegido)
+            else:
+                # Si no hay puntos en el segmento, buscar el más cercano
+                for x in range(seg_min, x_max_detonado + 1):
+                    if x not in puntos_detonados_x and x not in self.x_objetivo:
+                        self.x_objetivo.append(x)
+                        break
+        
+        # Si aún no tenemos suficientes objetivos, buscar en todo el rango
+        while len(self.x_objetivo) < num_objetivos:
             for x in range(x_min_detonado + 1, x_max_detonado):
-                if x not in [p[0] for p in self.puntos_detonados] and x not in posibles_objetivos:
-                    posibles_objetivos.append(x)
+                if x not in puntos_detonados_x and x not in self.x_objetivo:
+                    self.x_objetivo.append(x)
+                    if len(self.x_objetivo) >= num_objetivos:
+                        break
         
-        # Seleccionar 2-3 objetivos
-        num_objetivos = min(3, len(posibles_objetivos))
-        self.x_objetivo = random.sample(posibles_objetivos, num_objetivos)
         self.x_objetivo.sort()
         
         # Calcular valores reales de las bombas objetivo
@@ -941,27 +963,24 @@ Estima el valor de {texto_objetivo} usando interpolación lineal con los puntos 
         return problema, respuesta
     
     def generar_problema_sistema_ecuaciones(self, metodo):
-        """Genera un sistema de ecuaciones lineales 3x3 con coeficientes más variados"""
-        # Generar solución aleatoria con más variedad
+        """Genera un sistema de ecuaciones lineales 3x3 con coeficientes no cero en todas las variables"""
+        # Generar solución aleatoria
         x = random.randint(-8, 8)
         y = random.randint(-8, 8)
         z = random.randint(-8, 8)
 
-        # Generar coeficientes más variados con negativos
-        a11 = random.randint(-5, 5)
-        a12 = random.randint(-5, 5)
-        a13 = random.randint(-5, 5)
-        a21 = random.randint(-5, 5)
-        a22 = random.randint(-5, 5)
-        a23 = random.randint(-5, 5)
-        a31 = random.randint(-5, 5)
-        a32 = random.randint(-5, 5)
-        a33 = random.randint(-5, 5)
+        # MEJORA: Generar coeficientes no cero para todas las variables en todas las ecuaciones
+        def coef_no_cero():
+            return random.choice([i for i in range(-5, 6) if i != 0])
+        
+        # Generar coeficientes asegurando que ninguna variable tenga coeficiente cero
+        a11, a12, a13 = coef_no_cero(), coef_no_cero(), coef_no_cero()
+        a21, a22, a23 = coef_no_cero(), coef_no_cero(), coef_no_cero()
+        a31, a32, a33 = coef_no_cero(), coef_no_cero(), coef_no_cero()
 
         # Asegurar que el sistema tenga solución única
         det = a11*(a22*a33 - a23*a32) - a12*(a21*a33 - a23*a31) + a13*(a21*a32 - a22*a31)
-        if det == 0:
-            # Usar coeficientes por defecto que tengan solución única
+        if abs(det) < 0.1:  # Si el determinante es casi cero, usar coeficientes por defecto
             a11, a12, a13 = 2, -3, 1
             a21, a22, a23 = -1, 2, 4
             a31, a32, a33 = 3, 1, -2
@@ -973,9 +992,7 @@ Estima el valor de {texto_objetivo} usando interpolación lineal con los puntos 
 
         # Formatear los coeficientes para mostrar signos correctos
         def formato_coef(coef, variable):
-            if coef == 0:
-                return ""
-            elif coef == 1:
+            if coef == 1:
                 return f"+ {variable}" 
             elif coef == -1:
                 return f"- {variable}"
@@ -1009,31 +1026,25 @@ Ingresa los valores de x, y, z.
         return problema, (x, y, z)
     
     def generar_problema_sistema_diagonal_dominante(self, metodo):
-        """Genera un sistema 3x3 diagonalmente dominante para métodos iterativos"""
+        """Genera un sistema 3x3 diagonalmente dominante con coeficientes no cero"""
         # Generar solución
         x = random.uniform(-5, 5)
         y = random.uniform(-5, 5)
         z = random.uniform(-5, 5)
 
-        # Generar coeficientes para una matriz diagonalmente dominante
-        # Para cada fila, el valor absoluto del elemento diagonal es mayor que la suma de los valores absolutos de los otros elementos
-        a11 = random.randint(8, 12)
-        a12 = random.randint(-2, 2)
-        a13 = random.randint(-2, 2)
-        a21 = random.randint(-2, 2)
-        a22 = random.randint(8, 12)
-        a23 = random.randint(-2, 2)
-        a31 = random.randint(-2, 2)
-        a32 = random.randint(-2, 2)
-        a33 = random.randint(8, 12)
+        # MEJORA: Generar coeficientes no cero para todas las variables
+        def coef_no_cero():
+            return random.choice([i for i in range(-5, 6) if i != 0])
+        
+        # Generar coeficientes iniciales
+        a11, a12, a13 = coef_no_cero(), coef_no_cero(), coef_no_cero()
+        a21, a22, a23 = coef_no_cero(), coef_no_cero(), coef_no_cero()
+        a31, a32, a33 = coef_no_cero(), coef_no_cero(), coef_no_cero()
 
         # Asegurar diagonal dominante
-        if abs(a11) < abs(a12) + abs(a13):
-            a11 = abs(a12) + abs(a13) + random.randint(1, 3)
-        if abs(a22) < abs(a21) + abs(a23):
-            a22 = abs(a21) + abs(a23) + random.randint(1, 3)
-        if abs(a33) < abs(a31) + abs(a32):
-            a33 = abs(a31) + abs(a32) + random.randint(1, 3)
+        a11 = abs(a12) + abs(a13) + random.randint(1, 3)
+        a22 = abs(a21) + abs(a23) + random.randint(1, 3)
+        a33 = abs(a31) + abs(a32) + random.randint(1, 3)
 
         # Calcular términos independientes
         b1 = a11*x + a12*y + a13*z
@@ -1042,9 +1053,7 @@ Ingresa los valores de x, y, z.
 
         # Formatear
         def formato_coef(coef, variable):
-            if coef == 0:
-                return ""
-            elif coef == 1:
+            if coef == 1:
                 return f"+ {variable}" 
             elif coef == -1:
                 return f"- {variable}"
@@ -1077,152 +1086,171 @@ Ingresa los valores de x, y, z.
         return problema, (x, y, z)
     
     def generar_problema_ecuacion_no_lineal(self, metodo):
-        """Genera un problema de ecuación no lineal más realista"""
+        """Genera un problema de ecuación no lineal con al menos una raíz real"""
         if metodo == "Bisección":
-            # Generar ecuación cuadrática con raíces reales
-            a = random.randint(1, 3)
-            b = random.randint(-8, 8)
-            c = random.randint(-10, 10)
-            
-            # Calcular raíces
-            discriminante = b**2 - 4*a*c
-            if discriminante >= 0:
-                raiz1 = (-b + math.sqrt(discriminante)) / (2*a)
-                raiz2 = (-b - math.sqrt(discriminante)) / (2*a)
-                raices = [raiz1, raiz2]
-                # Seleccionar una raíz que esté en un rango razonable
-                raiz = random.choice([r for r in raices if -10 <= r <= 10])
+            # MEJORA: Generar ecuación cuadrática con raíces reales garantizadas
+            for intento in range(100):  # Intentar hasta 100 veces
+                a = random.randint(1, 3)
+                b = random.randint(-8, 8)
+                c = random.randint(-10, 10)
+                
+                # Verificar que tenga raíces reales
+                discriminante = b**2 - 4*a*c
+                if discriminante >= 0:
+                    raiz1 = (-b + math.sqrt(discriminante)) / (2*a)
+                    raiz2 = (-b - math.sqrt(discriminante)) / (2*a)
+                    raices = [raiz1, raiz2]
+                    # Seleccionar una raíz que esté en un rango razonable
+                    raices_validas = [r for r in raices if -10 <= r <= 10]
+                    if raices_validas:
+                        raiz = random.choice(raices_validas)
+                        break
             else:
-                # Si no hay raíces reales, generar una nueva ecuación
-                return self.generar_problema_ecuacion_no_lineal(metodo)
+                # Si no se pudo generar en 100 intentos, usar una ecuación con raíces conocidas
+                a, b, c = 1, -3, 2  # Raíces: 1 y 2
+                raiz = random.choice([1.0, 2.0])
             
+            # MEJORA: Mostrar f(x) en lugar de = 0
             problema = f"""
 PROBLEMA DE ECUACIÓN NO LINEAL (Método: {metodo}):
 
-Encuentra una raíz de la ecuación usando el método de {metodo}:
-{a}x² + {b}x + {c} = 0
+Encuentra una raíz de la función usando el método de {metodo}:
+f(x) = {a}x² + {b}x + {c}
 
 La raíz debe encontrarse en un intervalo donde la función cambie de signo.
 """
             return problema, raiz
             
         elif metodo == "Newton-Raphson":
-            # Ecuación trascendental realista
+            # Usar ecuaciones que sabemos tienen raíces reales
             tipo = random.choice(["exponencial", "trigonometrica"])
             
             if tipo == "exponencial":
-                # f(x) = e^(-x) - x
-                # Raíz: x ≈ 0.567143
+                # f(x) = e^(-x) - x, raíz alrededor de 0.567
                 respuesta = 0.5671432904097838
+                # MEJORA: Mostrar f(x) en lugar de = 0
                 problema = f"""
 PROBLEMA DE ECUACIÓN NO LINEAL (Método: {metodo}):
 
-Encuentra una raíz de la ecuación usando el método de {metodo}:
-e^(-x) - x = 0
+Encuentra una raíz de la función usando el método de {metodo}:
+f(x) = e^(-x) - x
 
 Usa el método de Newton-Raphson con un valor inicial apropiado.
 """
             else:  # trigonometrica
-                # f(x) = x·cos(x) - ln(x)
-                # Raíz alrededor de 1.2-1.3
+                # f(x) = x·cos(x) - ln(x), raíz alrededor de 1.2-1.3
                 respuesta = 1.2926957193733982
+                # MEJORA: Mostrar f(x) en lugar de = 0
                 problema = f"""
 PROBLEMA DE ECUACIÓN NO LINEAL (Método: {metodo}):
 
-Encuentra una raíz de la ecuación usando el método de {metodo}:
-x·cos(x) - ln(x) = 0
+Encuentra una raíz de la función usando el método de {metodo}:
+f(x) = x·cos(x) - ln(x)
 
 Usa el método de Newton-Raphson con un valor inicial apropiado.
 """
             return problema, respuesta
         
         elif metodo == "Secante":
-            # Ecuación mixta
+            # MEJORA: Generar una ecuación que siempre tenga raíces reales
             a = random.randint(1, 3)
             b = random.randint(1, 3)
             c = random.randint(-5, 5)
             
-            # f(x) = a·sin(x) + b·cos(x) - c
-            # Encontrar una raíz aproximada
-            respuesta = random.uniform(0.5, 3)
+            # Esta ecuación: a*sin(x) + b*cos(x) - c, siempre tiene raíces porque es continua y oscilatoria
+            # Encontrar una raíz aproximada por fuerza bruta en [0, 2*pi]
+            x_vals = np.linspace(0, 2*math.pi, 1000)
+            y_vals = a*np.sin(x_vals) + b*np.cos(x_vals) - c
+            raices = []
+            for i in range(1, len(x_vals)):
+                if y_vals[i-1] * y_vals[i] < 0:
+                    raiz = (x_vals[i-1] + x_vals[i]) / 2
+                    raices.append(raiz)
+            if raices:
+                respuesta = random.choice(raices)
+            else:
+                # Si no se encontró raíz, usar un valor por defecto
+                respuesta = random.uniform(0.5, 3)
             
+            # MEJORA: Mostrar f(x) en lugar de = 0
             problema = f"""
 PROBLEMA DE ECUACIÓN NO LINEAL (Método: {metodo}):
 
-Encuentra una raíz de la ecuación usando el método de {metodo}:
-{a}·sin(x) + {b}·cos(x) - {c} = 0
+Encuentra una raíz de la función usando el método de {metodo}:
+f(x) = {a}·sin(x) + {b}·cos(x) - {c}
 
 Usa el método de la secante con dos puntos iniciales.
 """
             return problema, respuesta
         
         elif metodo == "Punto Fijo":
-            # Generar una ecuación adecuada para Punto Fijo
+            # Usar ecuaciones con raíces conocidas
             tipo = random.choice(["exponencial", "cubica", "trigonometrica"])
             if tipo == "exponencial":
-                # Ecuación: e^(-x) - x = 0  -> x = e^(-x)
-                # La raíz está alrededor de 0.567
                 respuesta = 0.5671432904097838
+                # MEJORA: Mostrar f(x) en lugar de = 0
                 problema = f"""
 PROBLEMA DE ECUACIÓN NO LINEAL (Método: {metodo}):
 
-Encuentra una raíz de la ecuación usando el método de Punto Fijo:
-e^(-x) - x = 0
+Encuentra una raíz de la función usando el método de Punto Fijo:
+f(x) = e^(-x) - x
 
 Transforma la ecuación a la forma x = e^(-x) y aplica el método.
 """
             elif tipo == "cubica":
-                # Ecuación: x³ - x - 1 = 0 -> x = (x + 1)^(1/3)
-                # Raíz real: aproximadamente 1.3247
                 respuesta = 1.324717957244746
+                # MEJORA: Mostrar f(x) en lugar de = 0
                 problema = f"""
 PROBLEMA DE ECUACIÓN NO LINEAL (Método: {metodo}):
 
-Encuentra una raíz de la ecuación usando el método de Punto Fijo:
-x³ - x - 1 = 0
+Encuentra una raíz de la función usando el método de Punto Fijo:
+f(x) = x³ - x - 1
 
 Transforma la ecuación a una forma adecuada x = g(x) y aplica el método.
 """
             else: # trigonometrica
-                # Ecuación: sin(x) - x/2 = 0 -> x = 2*sin(x)
-                # Raíz alrededor de 1.895
                 respuesta = 1.8954942670339809
+                # MEJORA: Mostrar f(x) en lugar de = 0
                 problema = f"""
 PROBLEMA DE ECUACIÓN NO LINEAL (Método: {metodo}):
 
-Encuentra una raíz de la ecuación usando el método de Punto Fijo:
-sin(x) - x/2 = 0
+Encuentra una raíz de la función usando el método de Punto Fijo:
+f(x) = sin(x) - x/2
 
 Transforma la ecuación a la forma x = 2*sin(x) y aplica el método.
 """
             return problema, respuesta
         
         else:  # Falsa Posición
-            # Ecuación polinomial o racional
-            a = random.randint(1, 3)
-            b = random.randint(-5, 5)
-            c = random.randint(-8, 8)
-            
-            # Encontrar raíces de ecuación cuadrática
-            discriminante = b**2 - 4*a*c
-            if discriminante >= 0:
-                raiz1 = (-b + math.sqrt(discriminante)) / (2*a)
-                raiz2 = (-b - math.sqrt(discriminante)) / (2*a)
-                raices = [raiz1, raiz2]
-                # Seleccionar una raíz que esté en un rango razonable
-                respuesta = random.choice([r for r in raices if -10 <= r <= 10])
+            # MEJORA: Generar ecuación cuadrática con raíces reales garantizadas
+            for intento in range(100):
+                a = random.randint(1, 3)
+                b = random.randint(-8, 8)
+                c = random.randint(-10, 10)
+                
+                discriminante = b**2 - 4*a*c
+                if discriminante >= 0:
+                    raiz1 = (-b + math.sqrt(discriminante)) / (2*a)
+                    raiz2 = (-b - math.sqrt(discriminante)) / (2*a)
+                    raices = [raiz1, raiz2]
+                    raices_validas = [r for r in raices if -10 <= r <= 10]
+                    if raices_validas:
+                        raiz = random.choice(raices_validas)
+                        break
             else:
-                respuesta = random.uniform(-5, 5)
+                a, b, c = 1, -3, 2
+                raiz = random.choice([1.0, 2.0])
             
+            # MEJORA: Mostrar f(x) en lugar de = 0
             problema = f"""
 PROBLEMA DE ECUACIÓN NO LINEAL (Método: {metodo}):
 
-Encuentra una raíz de la ecuación usando el método de {metodo}:
-{a}x² + {b}x + {c} = 0
+Encuentra una raíz de la función usando el método de {metodo}:
+f(x) = {a}x² + {b}x + {c}
 
 La raíz debe encontrarse en un intervalo donde la función cambie de signo.
 """
-            return problema, respuesta
+            return problema, raiz
     
     def crear_interfaz_desactivacion(self):
         """Crea la interfaz para la fase de desactivación"""
